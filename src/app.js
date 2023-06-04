@@ -1,16 +1,19 @@
 require('dotenv').config();
+require('./db/DBconection');
 const express = require('express')
 const app = express();
 const port = process.env.PORT || 3000;
+const reg = require('./models/reg-log');
 const path = require('path');
 const hbs = require('hbs');
-const bcrypt = require('bcrypt')
-require('./db/DBconection');
-const reg = require('./models/reg-log');
+const bcrypt = require('bcrypt');
+const cookieParser = require('cookie-parser');
+const authentication = require('./middleware/authentication')
 
 console.log(process.env.SECRETE_KEY,process.env.DB_HOST)
 
 app.use(express.json())
+app.use(cookieParser());
 // app.use(cors())
 app.use(express.urlencoded({extended:false}))
 
@@ -36,6 +39,12 @@ app.get('/',(req,res)=>{
 })
 
 
+app.get('/secret',authentication,(req,res)=>{
+    // its not a secret key. it is the user valid token that we are getting from cookie
+    // console.log(`this is cookie ${req.cookies.jwt}`);
+    res.render('secret');
+})
+
 app.get('/registor',(req,res)=>{
     res.render('registor')
 });
@@ -43,6 +52,27 @@ app.get('/registor',(req,res)=>{
 app.get('/login',(req,res)=>{
     res.render('login')
 });
+
+app.get('/logout',authentication, async (req,res)=>{
+    try {
+    console.log(req.user);
+    // remove one specific token (that is logout from one devices)
+    // for single logout
+    //    req.user.tokens =  req.user.tokens.filter((curElement) => curElement.token !== req.token);
+
+
+
+    //logout from all devices
+    // req.user.tokens.length = 0; 
+    req.user.tokens = [];
+       res.clearCookie('jwt');
+        await req.user.save();
+        res.render('login')
+        console.log("logout successfully");
+    } catch (error) {
+        res.status(500).send(error)
+    }    
+})
 
 app.post('/registor',async(req,res)=>{
     try{
@@ -62,6 +92,24 @@ app.post('/registor',async(req,res)=>{
             
          const token =  await  registorEmployee.generateAuthToken();
          console.log('the token part'+token)
+
+
+        //  the res.cookie() function is used to set the cookie name to value.
+        //the value paramerter may be a string or object converted to JSON.
+        //Syntax :
+        // res.cookie(name,value,[options])
+            
+         res.cookie('jwt',token,{
+            //if we dont write expires then when we refresh the page then cookes not be stored.
+            //that way we have menation expires date.
+            expires:new Date(Date.now() + 600000), 
+            // client side scryting language means js the value('jwt') can not remove or delete (nothing can done)
+            //but, we can manoly remove on browser
+            httpOnly:true,
+            // only work on https or secure
+            // secure:true
+         });
+         console.log(cookie);
 
            const registor =  await registorEmployee.save();
             res.status(201).render('login');
@@ -96,6 +144,13 @@ app.post('/login',async(req,res)=>{
         //// geting tokens
         const token =  await  useremail.generateAuthToken();
          console.log('the token part '+token)
+
+        //  cookie(desciption above)
+        res.cookie('jwt',token,{
+            expires:new Date(Date.now()+600000),
+            httpOnly:true,
+            // secure:true
+        })
 
         if(isMatch){
             res.status(201).render('index');
